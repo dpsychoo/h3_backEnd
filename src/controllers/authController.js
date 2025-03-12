@@ -1,85 +1,75 @@
-const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
 const pool = require("../config/database");
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
+
+const determineRole = (email) => {
+  if (email.endsWith("@adminMF.com")) return "admin";
+  if (email.endsWith("@vendedorMF.com")) return "vendedor";
+  return "cliente"; // default
+};
 
 const authController = {
-  // R. User
+  // 📌 Registrar user
   async register(req, res) {
     try {
-      const { nombre, email, password, rol } = req.body;
+      const { nombre, email, password } = req.body;
 
-      const userExists = await pool.query("SELECT * FROM usuarios WHERE email = $1", [email]);
-      if (userExists.rows.length > 0) {
-        return res.status(400).json({ message: "El usuario ya está registrado" });
+      if (!nombre || !email || !password) {
+        return res.status(400).json({ message: "Todos los campos son obligatorios." });
       }
 
-      // Encriptar la contraseña antes de guardarla en la BD
-      const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash(password, salt);
+      // Determinar el rol automáticamente según el email
+      let rol = determineRole(email);
+      if (!rol) rol = "cliente"; //Asegurar no null
 
-      const { rows } = await pool.query(
+      // Encriptar contraseña
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      // Ins user en db
+      const result = await pool.query(
         "INSERT INTO usuarios (nombre, email, password, rol) VALUES ($1, $2, $3, $4) RETURNING id, nombre, email, rol",
         [nombre, email, hashedPassword, rol]
       );
 
-      res.status(201).json({
-        message: "Usuario registrado exitosamente",
-        user: rows[0],
-      });
+      const usuario = result.rows[0];
+
+      res.status(201).json({ message: "Usuario registrado exitosamente", user: usuario });
     } catch (error) {
-      console.error("Error en el registro:", error);
-      res.status(500).json({ message: "Error en el servidor", error });
+      console.error("Error al registrar usuario:", error);
+      res.status(500).json({ message: "Error en el servidor" });
     }
   },
 
-  // I.S.
+  // 📌 Iniciar sesión (Corrección aplicada)
   async login(req, res) {
     try {
       const { email, password } = req.body;
 
-      // Verif si user existe en la BD
-      const { rows } = await pool.query("SELECT * FROM usuarios WHERE email = $1", [email]);
-      if (rows.length === 0) {
-        return res.status(404).json({ message: "Usuario no encontrado" });
+      const result = await pool.query("SELECT * FROM usuarios WHERE email = $1", [email]);
+
+      if (result.rows.length === 0) {
+        return res.status(401).json({ message: "Credenciales inválidas" }); // 🔹 Mensaje corregido
       }
 
-      const user = rows[0];
+      const usuario = result.rows[0];
 
-      // Comparar la contraseña ingresada con la contraseña hasheada
-      const isMatch = await bcrypt.compare(password, user.password);
-      if (!isMatch) {
-        return res.status(400).json({ message: "Contraseña incorrecta" });
+      // Verificar la contraseña
+      const validPassword = await bcrypt.compare(password, usuario.password);
+      if (!validPassword) {
+        return res.status(401).json({ message: "Credenciales inválidas" }); // 🔹 Mensaje corregido
       }
 
       // Generar el token JWT
       const token = jwt.sign(
-        { id: user.id, rol: user.rol },
+        { id: usuario.id, nombre: usuario.nombre, email: usuario.email, rol: usuario.rol },
         process.env.JWT_SECRET,
-        { expiresIn: "1h" }
+        { expiresIn: "24h" }
       );
 
-      res.json({ message: "Inicio de sesión exitoso", token, user: { id: user.id, nombre: user.nombre, email: user.email, rol: user.rol } });
+      res.json({ message: "Inicio de sesión exitoso", token, usuario });
     } catch (error) {
-      console.error("Error en login:", error);
-      res.status(500).json({ message: "Error en el servidor", error });
-    }
-  },
-
-  // Get Pf user autenticado
-  async getProfile(req, res) {
-    try {
-      const userId = req.user.id;
-
-      const { rows } = await pool.query("SELECT id, nombre, email, rol FROM usuarios WHERE id = $1", [userId]);
-
-      if (rows.length === 0) {
-        return res.status(404).json({ message: "Usuario no encontrado" });
-      }
-
-      res.json(rows[0]);
-    } catch (error) {
-      console.error("Error obteniendo perfil:", error);
-      res.status(500).json({ message: "Error en el servidor", error });
+      console.error("Error al iniciar sesión:", error);
+      res.status(500).json({ message: "Error en el servidor" });
     }
   }
 };

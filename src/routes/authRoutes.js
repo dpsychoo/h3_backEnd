@@ -1,13 +1,10 @@
 const express = require("express");
 const authController = require("../controllers/authController");
-const authMiddleware = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
+//Registro e inicio de sesión
 router.post("/register", authController.register);
 router.post("/login", authController.login);
-
-// Get Perfil del Usuario Autenticado
-router.get("/profile", authMiddleware, authController.getProfile);
 
 module.exports = router;

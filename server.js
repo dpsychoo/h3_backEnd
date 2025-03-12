@@ -1,28 +1,24 @@
 require("dotenv").config();
+
 const express = require("express");
 const cors = require("cors");
-const pool = require("./config/db");
+const authRoutes = require("./routes/authRoutes");
+const productRoutes = require("./routes/productRoutes");
+const orderRoutes = require("./routes/orderRoutes");
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-
-
 app.use(cors());
 app.use(express.json());
 
+app.use("/api/auth", authRoutes);
+app.use("/api/productos", productRoutes);
+app.use("/api/compras", orderRoutes);
+
 app.get("/", (req, res) => {
-  res.send("✅ API Marketplace en funcionamiento!");
+  res.send("🚀 API de Marketfy funcionando correctamente!");
 });
 
-app.get("/test-db", async (req, res) => {
-  try {
-    const result = await pool.query("SELECT NOW()");
-    res.json({ message: "Conexión a PostgreSQL exitosa", timestamp: result.rows[0].now });
-  } catch (error) {
-    res.status(500).json({ message: "Error al conectar con la base de datos", error });
-  }
-});
-
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-  console.log(`🟢 Servidor corriendo en http://localhost:${PORT}`);
+  console.log(`✅ Servidor corriendo en http://localhost:${PORT}`);
 });
